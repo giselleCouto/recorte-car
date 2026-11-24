@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InovaCAR — Consulta ao CAR</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root {
+    --fundo: #f6f7f4; --painel: #ffffff; --texto: #1d2a22; --suave: #5b6b61; --borda: #dfe5df;
+    --verde: #1f6f43; --verde-claro: #e3f1e8; --destaque: #f2b705; --erro: #a33;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--texto); background: var(--fundo); }
+  .app { display: grid; grid-template-columns: 400px 1fr; height: 100vh; }
+  aside { background: var(--painel); border-right: 1px solid var(--borda); overflow-y: auto; padding: 20px 20px 32px; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .sub { color: var(--suave); font-size: 13px; margin: 0 0 16px; line-height: 1.4; }
+  form { display: flex; gap: 8px; }
+  input[type=text] { flex: 1; font-size: 15px; padding: 10px 12px; border: 1px solid var(--borda); border-radius: 8px; }
+  button { font-size: 14px; padding: 10px 14px; border: 0; border-radius: 8px; background: var(--verde); color: #fff; cursor: pointer; }
+  button:hover { filter: brightness(1.1); }
+  .exemplos { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 18px; }
+  .exemplos span { font-size: 12px; background: var(--verde-claro); color: var(--verde); padding: 5px 9px; border-radius: 999px; cursor: pointer; }
+  .resposta { font-size: 15px; line-height: 1.5; margin: 0 0 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chips span { font-size: 12px; border: 1px solid var(--borda); border-radius: 6px; padding: 3px 7px; color: var(--suave); }
+  .api { font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: #f1f3f0; border-radius: 6px; padding: 8px; word-break: break-all; }
+  .api a { color: var(--verde); }
+  .metricas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+  .metricas div { background: #f1f3f0; border-radius: 8px; padding: 8px; }
+  .metricas b { display: block; font-size: 16px; }
+  .metricas small { color: var(--suave); font-size: 11px; }
+  .termos { font-size: 12px; color: var(--suave); line-height: 1.45; }
+  .aviso { color: var(--erro); font-size: 13px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--suave); margin: 22px 0 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td, th { text-align: left; padding: 4px 2px; border-bottom: 1px solid var(--borda); }
+  .legenda { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--suave); }
+  .legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .ir { display: flex; gap: 6px; margin-top: 8px; }
+  .ir button { background: #fff; color: var(--verde); border: 1px solid var(--verde); padding: 5px 10px; font-size: 12px; }
+  #mapa { height: 100%; }
+  .maplibregl-popup-content { font-size: 12px; line-height: 1.45; max-width: 300px; }
+  .rodape { font-size: 11px; color: var(--suave); margin-top: 24px; line-height: 1.5; }
+  @media (max-width: 800px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 60vh; height: auto; }
+    aside { border-right: 0; border-bottom: 1px solid var(--borda); }
+    #mapa { height: 60vh; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>InovaCAR · Consulta ao CAR</h1>
+    <p class="sub">Pergunte em português ou clique no mapa. Cada resposta busca só os imóveis necessários, sem baixar a base do estado.</p>
+
+    <form id="form">
+      <input id="q" type="text" autocomplete="off" placeholder="Ex.: quantos imóveis ativos há em Macapá?">
+      <button type="submit">Perguntar</button>
+    </form>
+    <div class="exemplos" id="exemplos"></div>
+
+    <div id="saida"></div>
+
+    <h2>Camada no mapa</h2>
+    <div class="legenda">
+      <span><i style="background:#2e8b57"></i>Ativo</span>
+      <span><i style="background:#e0a800"></i>Pendente</span>
+      <span><i style="background:#c0392b"></i>Suspenso</span>
+      <span><i style="background:#7f8c8d"></i>Cancelado</span>
+      <span><i style="background:#f2b705;outline:2px solid #000"></i>Resultado</span>
+    </div>
+    <div class="ir" id="ir"></div>
+
+    <h2>Desempenho desta sessão</h2>
+    <div id="perf" class="termos">Faça uma consulta para ver os tempos de resposta.</div>
+
+    <p class="rodape">
+      Dados: WFS público do Sicar (SFB/MGI), sem dados pessoais. API aberta (Apache-2.0):
+      <a href="/docs">documentação</a> · <a href="/ogc">OGC API – Features</a> · <a href="/v1/dicionario">dicionário de dados</a>.
+      Mapa base © colaboradores do OpenStreetMap.
+    </p>
+  </aside>
+  <div id="mapa"></div>
+</div>
+
+<script>
+const EXEMPLOS = [
+  "Quantos imóveis ativos há em Macapá?",
+  "Os 10 maiores imóveis com área a recompor no Amapá",
+  "Imóveis de assentamento em Porto Grande",
+  "Pequenas propriedades em conformidade no DF",
+  "Imóveis atualizados nos últimos 12 meses em Santana",
+  "-15.9640, -47.7980",
+];
+const ROTULO_STATUS = { AT: "Ativo", PE: "Pendente", SU: "Suspenso", CA: "Cancelado" };
+const fmt = (v, c = 1) => v == null ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: c, minimumFractionDigits: 0 });
+const kb = (b) => b < 1024 * 1024 ? fmt(b / 1024, 1) + " KB" : fmt(b / 1048576, 1) + " MB";
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const tempos = [];
+let tamanhoBase = {};
+
+const mapa = new maplibregl.Map({
+  container: "mapa",
+  style: {
+    version: 8,
+    sources: {
+      osm: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256, maxzoom: 19,
+             attribution: "© colaboradores do OpenStreetMap" },
+      car: { type: "vector", tiles: [location.origin + "/v1/tiles/{z}/{x}/{y}.pbf"], minzoom: 4, maxzoom: 16 },
+      resultado: { type: "geojson", data: { type: "FeatureCollection", features: [] } },
+    },
+    layers: [
+      { id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.6, "raster-opacity": 0.85 } },
+      { id: "car-preench", type: "fill", source: "car", "source-layer": "imoveis",
+        paint: { "fill-color": ["match", ["get", "status"], "AT", "#2e8b57", "PE", "#e0a800", "SU", "#c0392b", "#7f8c8d"],
+                 "fill-opacity": 0.35 } },
+      { id: "car-linha", type: "line", source: "car", "source-layer": "imoveis", minzoom: 9,
+        paint: { "line-color": "#1d2a22", "line-width": 0.4, "line-opacity": 0.6 } },
+      { id: "res-preench", type: "fill", source: "resultado", paint: { "fill-color": "#f2b705", "fill-opacity": 0.55 } },
+      { id: "res-linha", type: "line", source: "resultado", paint: { "line-color": "#000", "line-width": 1.6 } },
+    ],
+  },
+  center: [-51.5, 1.0], zoom: 6.3,
+});
+mapa.addControl(new maplibregl.NavigationControl(), "top-right");
+mapa.addControl(new maplibregl.ScaleControl({ unit: "metric" }));
+
+function registrarTempo(rota, ms, bytes) {
+  tempos.push({ rota, ms, bytes });
+  const ult = tempos.slice(-8).reverse();
+  document.getElementById("perf").innerHTML =
+    "<table><tr><th>Consulta</th><th>Tempo</th><th>Tamanho</th></tr>" +
+    ult.map((t) => `<tr><td>${esc(t.rota)}</td><td>${fmt(t.ms, 0)} ms</td><td>${kb(t.bytes)}</td></tr>`).join("") + "</table>";
+}
+
+async function buscarJSON(url) {
+  const t0 = performance.now();
+  const r = await fetch(url);
+  const texto = await r.text();
+  const ms = performance.now() - t0;
+  registrarTempo(url.split("?")[0], ms, new Blob([texto]).size);
+  return { ok: r.ok, dados: JSON.parse(texto), ms, bytes: new Blob([texto]).size };
+}
+
+function enquadrar(geojson) {
+  if (!geojson || !geojson.features || !geojson.features.length) return;
+  const b = new maplibregl.LngLatBounds();
+  const visitar = (c) => (typeof c[0] === "number" ? b.extend(c) : c.forEach(visitar));
+  geojson.features.forEach((f) => f.geometry && visitar(f.geometry.coordinates));
+  mapa.fitBounds(b, { padding: 60, maxZoom: 14, duration: 800 });
+}
+
+async function perguntar(q) {
+  document.getElementById("q").value = q;
+  const saida = document.getElementById("saida");
+  saida.innerHTML = "<p class='termos'>Consultando…</p>";
+  const { ok, dados, ms, bytes } = await buscarJSON("/v1/perguntar?q=" + encodeURIComponent(q));
+  if (!ok) { saida.innerHTML = `<p class="aviso">${esc(dados.erro || "Erro na consulta")}</p>`; return; }
+  const f = dados.filtros || {};
+  const mun = municipios.find((m) => m.cod_municipio_ibge === f.cod_municipio);
+  const feat0 = dados.geojson && dados.geojson.features && dados.geojson.features[0];
+  const uf = f.uf || (mun && mun.uf) || (feat0 && feat0.properties.uf) || null;
+  const base = uf && tamanhoBase[uf];
+  saida.innerHTML = `
+    <p class="resposta">${esc(dados.resposta)}</p>
+    ${dados.entendido.length ? `<div class="chips">${dados.entendido.map((e) => `<span>${esc(e)}</span>`).join("")}</div>` : ""}
+    ${dados.avisos.map((a) => `<p class="aviso">${esc(a)}</p>`).join("")}
+    <div class="metricas">
+      <div><b>${fmt(ms, 0)} ms</b><small>tempo total</small></div>
+      <div><b>${kb(bytes)}</b><small>trafegados</small></div>
+      <div><b>${base ? fmt(base / bytes, 0) + "×" : "—"}</b><small>${base ? "menor que baixar a UF" : "economia vs. UF"}</small></div>
+    </div>
+    ${dados.consulta_api_equivalente ? `<div class="api">Mesma consulta pela API:<br><a href="${esc(dados.consulta_api_equivalente)}" target="_blank">${esc(dados.consulta_api_equivalente)}</a></div>` : ""}
+    ${Object.keys(dados.termos || {}).length ? `<h2>O que significam os termos</h2><div class="termos">${Object.values(dados.termos).map(esc).join("<br>")}</div>` : ""}
+  `;
+  mapa.getSource("resultado").setData(dados.geojson || { type: "FeatureCollection", features: [] });
+  if (dados.geojson) enquadrar(dados.geojson);
+  else if (dados.filtros && dados.filtros.cod_municipio) irPara(dados.filtros.cod_municipio);
+}
+
+let municipios = [];
+function irPara(cod) {
+  const m = municipios.find((x) => x.cod_municipio_ibge === cod);
+  if (m) mapa.fitBounds([[m.bbox[0], m.bbox[1]], [m.bbox[2], m.bbox[3]]], { padding: 40, duration: 800 });
+}
+
+mapa.on("click", async (e) => {
+  const { lat, lng } = e.lngLat;
+  const { dados } = await buscarJSON(`/v1/imoveis/ponto?lat=${lat.toFixed(6)}&lon=${lng.toFixed(6)}&geometria=completa`);
+  const feats = dados.features || [];
+  mapa.getSource("resultado").setData(dados);
+  const html = feats.length
+    ? feats.slice(0, 3).map((f) => {
+        const p = f.properties;
+        return `<b>${esc(p.cod_imovel)}</b><br>${esc(p.municipio)}/${esc(p.uf)} · ${fmt(p.area_ha)} ha · ${fmt(p.modulos_fiscais, 2)} MF<br>
+                Situação: ${esc(ROTULO_STATUS[p.status] || p.status)} · Tipo: ${esc(p.tipo)}<br>${esc(p.condicao)}<br>
+                Atualizado em ${esc(p.atualizado_em || "—")} · <a href="/v1/imoveis/${encodeURIComponent(p.cod_imovel)}" target="_blank">JSON</a>`;
+      }).join("<hr>") + (feats.length > 1 ? `<br><i>${feats.length} cadastros sobrepostos neste ponto</i>` : "")
+    : "Nenhum imóvel do CAR contém este ponto.";
+  new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(mapa);
+});
+mapa.on("mouseenter", "car-preench", () => (mapa.getCanvas().style.cursor = "pointer"));
+mapa.on("mouseleave", "car-preench", () => (mapa.getCanvas().style.cursor = ""));
+
+document.getElementById("form").addEventListener("submit", (e) => { e.preventDefault(); const q = document.getElementById("q").value.trim(); if (q) perguntar(q); });
+document.getElementById("exemplos").innerHTML = EXEMPLOS.map((x) => `<span>${esc(x)}</span>`).join("");
+document.querySelectorAll("#exemplos span").forEach((el) => el.addEventListener("click", () => perguntar(el.textContent)));
+
+(async () => {
+  const [mun, saude] = await Promise.all([fetch("/v1/municipios").then((r) => r.json()), fetch("/saude").then((r) => r.json())]);
+  municipios = mun.municipios || [];
+  tamanhoBase = saude.bytes_base_completa || {};
+  const ufs = {};
+  municipios.forEach((m) => {
+    const u = (ufs[m.uf] = ufs[m.uf] || [180, 90, -180, -90]);
+    u[0] = Math.min(u[0], m.bbox[0]); u[1] = Math.min(u[1], m.bbox[1]); u[2] = Math.max(u[2], m.bbox[2]); u[3] = Math.max(u[3], m.bbox[3]);
+  });
+  document.getElementById("ir").innerHTML = Object.keys(ufs).map((u) => `<button data-uf="${u}">Ir para ${u}</button>`).join("");
+  document.querySelectorAll("#ir button").forEach((b) => b.addEventListener("click", () => {
+    const x = ufs[b.dataset.uf]; mapa.fitBounds([[x[0], x[1]], [x[2], x[3]]], { padding: 30, duration: 800 });
+  }));
+})();
+</script>
+</body>
+</html>

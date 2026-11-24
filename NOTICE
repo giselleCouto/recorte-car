@@ -1,0 +1,11 @@
+InovaCAR MVP — acesso simplificado aos dados públicos do Cadastro Ambiental Rural
+Copyright 2026 NOKAHI CONSULTORIA E SOLUÇÕES LTDA (Belo Horizonte/MG) e autores do projeto
+
+Este produto é distribuído sob a Licença Apache, Versão 2.0 (ver LICENSE).
+A propriedade intelectual permanece com os autores; a licença concede direitos
+de uso, modificação e redistribuição nos termos ali descritos.
+
+Dados do CAR: Sistema Nacional de Cadastro Ambiental Rural (Sicar), Serviço
+Florestal Brasileiro / Ministério da Gestão e da Inovação em Serviços Públicos,
+obtidos do serviço WFS público. Os dados não são redistribuídos neste repositório.
+Mapa base da demonstração: © colaboradores do OpenStreetMap (ODbL).

@@ -1,0 +1,57 @@
+# Sobe banco + API. Carga inicial (DF e AP, ~40 mil imóveis, ~2 min):
+#   docker compose up -d
+#   docker compose --profile carga run --rm carga
+# Demonstração: http://localhost:8000  ·  Documentação: http://localhost:8000/docs
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    environment:
+      POSTGRES_USER: car
+      POSTGRES_PASSWORD: car
+      POSTGRES_DB: car
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U car -d car"]
+      interval: 5s
+      retries: 20
+    command: >
+      postgres -c shared_buffers=512MB -c work_mem=32MB -c effective_cache_size=1GB
+               -c random_page_cost=1.1 -c max_parallel_workers_per_gather=2
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      INOVACAR_DATABASE_URL: postgresql://car:car@db:5432/car
+      INOVACAR_CACHE_BACKEND: redis
+      INOVACAR_REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+
+  carga:
+    build: .
+    profiles: ["carga"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      INOVACAR_DATABASE_URL: postgresql://car:car@db:5432/car
+    volumes:
+      - ./dados:/srv/dados
+    command: >
+      sh -c "python -m ingest.baixar_wfs DF AP --saida dados/brutos &&
+             python -m ingest.carregar dados/brutos/DF dados/brutos/AP"
+
+volumes:
+  pgdata:

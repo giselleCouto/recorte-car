@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+dados/
+*.log
+docs/benchmark_bruto.json
+docs/ambiente_local_nokahi.md
+entrega/
+docs/rascunho_inscricao.md
+docs/roteiro_pitch.md
+docs/roteiro_video_prototipo.md
